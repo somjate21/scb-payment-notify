@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💳 แจ้งเตือนเงินเข้า</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #00c853;
+    --green-dark: #009624;
+    --green-glow: rgba(0,200,83,0.3);
+    --bg: #0a0f0d;
+    --surface: #111a14;
+    --surface2: #162019;
+    --border: rgba(0,200,83,0.15);
+    --text: #e8f5e9;
+    --muted: #6b8f71;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sarabun', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,200,83,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,200,83,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-icon {
+    width: 40px; height: 40px;
+    background: var(--green);
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    box-shadow: 0 0 16px var(--green-glow);
+  }
+  .brand-name {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  /* Status pill */
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .status-pill.connected {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(0,200,83,0.08);
+  }
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .dot.pulse {
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* Today summary */
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .summary-item label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-family: 'IBM Plex Mono', monospace;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .summary-amount {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--green);
+    line-height: 1;
+  }
+  .summary-amount .unit {
+    font-size: 13px;
+    color: var(--muted);
+    margin-left: 3px;
+    font-weight: 400;
+  }
+  .summary-count {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1;
+  }
+
+  /* Flash overlay */
+  .flash-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,200,83,0.12);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 100;
+    transition: opacity 0.1s;
+  }
+  .flash-overlay.active {
+    animation: flash 0.6s ease-out;
+  }
+  @keyframes flash {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-80px);
+    background: var(--green-dark);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 15px;
+    z-index: 200;
+    transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    white-space: nowrap;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Transactions */
+  .section-title {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: 'IBM Plex Mono', monospace;
+    margin-bottom: 12px;
+  }
+
+  .tx-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .tx-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    animation: slideIn 0.4s cubic-bezier(0.34,1.2,0.64,1);
+    position: relative;
+    overflow: hidden;
+  }
+  .tx-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--green);
+    border-radius: 3px 0 0 3px;
+  }
+  .tx-card.new-card {
+    border-color: var(--green);
+    background: var(--surface2);
+    box-shadow: 0 0 20px var(--green-glow);
+  }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-16px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .tx-icon {
+    width: 44px; height: 44px;
+    background: rgba(0,200,83,0.12);
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .tx-info { flex: 1; min-width: 0; }
+  .tx-bank {
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--green);
+  }
+  .tx-ref {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tx-time {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .tx-amount {
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .tx-amount .amt {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--green);
+    display: block;
+  }
+  .tx-amount .thb {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+  .empty-text { font-size: 14px; }
+
+  /* Test button */
+  .test-area {
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+  }
+  .test-label {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+  .test-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .test-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    outline: none;
+  }
+  .test-input:focus { border-color: var(--green); }
+  .test-input::placeholder { color: var(--muted); }
+  .btn-test {
+    background: var(--green);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    font-family: 'Sarabun', sans-serif;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .btn-test:hover { background: #00e664; transform: translateY(-1px); }
+  .btn-test:active { transform: translateY(0); }
+
+  /* Sound toggle */
+  .sound-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle-switch {
+    width: 36px; height: 20px;
+    background: var(--muted);
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.2s;
+  }
+  .toggle-switch.on { background: var(--green); }
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    background: white;
+    border-radius: 50%;
+    top: 3px; left: 3px;
+    transition: left 0.2s;
+  }
+  .toggle-switch.on::after { left: 19px; }
+  .sound-label { font-size: 13px; color: var(--muted); }
+
+  /* Webhook info */
+  .webhook-info {
+    margin-top: 16px;
+    padding: 12px;
+    background: rgba(0,200,83,0.05);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .webhook-url {
+    color: var(--green);
+    word-break: break-all;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="flash-overlay" id="flashOverlay"></div>
+
+<div class="toast" id="toast">💰 มีเงินเข้า!</div>
+
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="brand-icon">💳</div>
+      <div>
+        <div class="brand-name">Payment Notify</div>
+        <div class="brand-sub">SCB Webhook Monitor</div>
+      </div>
+    </div>
+    <div class="status-pill" id="statusPill">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusText">กำลังเชื่อมต่อ...</span>
+    </div>
+  </header>
+
+  <div class="summary-card">
+    <div class="summary-item">
+      <label>ยอดวันนี้</label>
+      <div class="summary-amount" id="totalAmount">0.00<span class="unit">฿</span></div>
+    </div>
+    <div class="summary-item">
+      <label>จำนวนครั้ง</label>
+      <div class="summary-count" id="totalCount">0 <span style="font-size:14px;color:var(--muted);font-weight:400">ครั้ง</span></div>
+    </div>
+  </div>
+
+  <div class="section-title">รายการล่าสุด</div>
+  <div class="tx-list" id="txList">
+    <div class="empty">
+      <div class="empty-icon">📭</div>
+      <div class="empty-text">รอรับเงินอยู่...</div>
+    </div>
+  </div>
+
+  <div class="test-area">
+    <div class="test-label">🧪 ทดสอบระบบ</div>
+    <div class="test-row">
+      <input class="test-input" id="testAmount" type="number" placeholder="จำนวนเงิน (บาท)" min="1">
+      <button class="btn-test" onclick="sendTest()">ส่งทดสอบ</button>
+    </div>
+    <label class="sound-toggle" onclick="toggleSound()">
+      <div class="toggle-switch on" id="soundSwitch"></div>
+      <span class="sound-label" id="soundLabel">🔊 เสียงแจ้งเตือนเปิดอยู่</span>
+    </label>
+    <div class="webhook-info">
+      Webhook URL สำหรับ SCB:
+      <div class="webhook-url" id="webhookUrl">http://localhost:3000/webhook/scb</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let transactions = [];
+let totalAmount = 0;
+let soundEnabled = true;
+let audioCtx = null;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playSound() {
+  if (!soundEnabled) return;
+  try {
+    const ctx = getAudioCtx();
+    // เสียงแจ้งเตือน "เงินเข้า" - 3 โน้ตสั้นๆ ไพเราะ
+    const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = ctx.currentTime + i * 0.12;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.4, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+      osc.start(t);
+      osc.stop(t + 0.25);
+    });
+  } catch(e) { console.warn('Audio error:', e); }
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  document.getElementById('soundSwitch').className = 'toggle-switch' + (soundEnabled ? ' on' : '');
+  document.getElementById('soundLabel').textContent = soundEnabled ? '🔊 เสียงแจ้งเตือนเปิดอยู่' : '🔇 เสียงแจ้งเตือนปิดอยู่';
+}
+
+function formatAmount(n) {
+  return parseFloat(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function bankEmoji(bank) {
+  const map = { SCB: '💜', KBANK: '💚', BBL: '💙', KTB: '🟡', TTB: '🟠', BAY: '🔴' };
+  return map[bank] || '🏦';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function flashScreen() {
+  const el = document.getElementById('flashOverlay');
+  el.classList.remove('active');
+  void el.offsetWidth;
+  el.classList.add('active');
+}
+
+function addTransaction(data) {
+  transactions.unshift(data);
+  totalAmount += parseFloat(data.amount);
+
+  document.getElementById('totalAmount').innerHTML = formatAmount(totalAmount) + '<span class="unit">฿</span>';
+  document.getElementById('totalCount').innerHTML = transactions.length + ' <span style="font-size:14px;color:var(--muted);font-weight:400">ครั้ง</span>';
+
+  renderList();
+  playSound();
+  flashScreen();
+  showToast(`💰 รับเงิน ${formatAmount(data.amount)} บาท`);
+}
+
+function renderList() {
+  const list = document.getElementById('txList');
+  if (transactions.length === 0) {
+    list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div class="empty-text">รอรับเงินอยู่...</div></div>';
+    return;
+  }
+  list.innerHTML = transactions.map((tx, i) => `
+    <div class="tx-card ${i === 0 ? 'new-card' : ''}">
+      <div class="tx-icon">${bankEmoji(tx.sendingBank)}</div>
+      <div class="tx-info">
+        <div class="tx-bank">${tx.sendingBank || 'Unknown'}</div>
+        <div class="tx-ref">${tx.transRef || '-'}</div>
+        <div class="tx-time">${tx.receivedAt || ''}</div>
+      </div>
+      <div class="tx-amount">
+        <span class="amt">${formatAmount(tx.amount)}</span>
+        <span class="thb">บาท</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// SSE connection
+function connectSSE() {
+  const pill = document.getElementById('statusPill');
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+
+  const es = new EventSource('/events');
+
+  es.onopen = () => {
+    pill.className = 'status-pill connected';
+    dot.className = 'dot pulse';
+    text.textContent = 'เชื่อมต่อแล้ว';
+  };
+
+  es.onmessage = (e) => {
+    if (e.data === 'connected') return;
+    try {
+      const data = JSON.parse(e.data);
+      addTransaction(data);
+    } catch(err) { console.error('Parse error:', err); }
+  };
+
+  es.onerror = () => {
+    pill.className = 'status-pill';
+    dot.className = 'dot';
+    text.textContent = 'ขาดการเชื่อมต่อ';
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+async function sendTest() {
+  // unlock audio
+  getAudioCtx().resume();
+
+  const amt = document.getElementById('testAmount').value;
+  try {
+    await fetch('/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: amt || undefined }),
+    });
+  } catch(e) {
+    alert('ไม่สามารถส่งได้ กรุณาตรวจสอบว่ารัน server.js แล้ว');
+  }
+}
+
+connectSSE();
+</script>
+</body>
+</html>
