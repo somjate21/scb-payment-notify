@@ -344,6 +344,53 @@
   }
   .btn-test:hover { background: #00e664; transform: translateY(-1px); }
   .btn-test:active { transform: translateY(0); }
+  .btn-test:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  /* Slip upload */
+  .upload-area {
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+  }
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 24px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg);
+  }
+  .upload-zone:hover, .upload-zone.dragging {
+    border-color: var(--green);
+    background: rgba(0,200,83,0.05);
+  }
+  .upload-zone-icon { font-size: 36px; margin-bottom: 8px; }
+  .upload-zone-text { font-size: 14px; color: var(--text); margin-bottom: 4px; }
+  .upload-zone-hint { font-size: 11px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .upload-preview {
+    margin-top: 12px;
+    border-radius: 10px;
+    max-width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .verify-status {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    text-align: center;
+    display: none;
+  }
+  .verify-status.error { background: rgba(255,80,80,0.1); color: #ff8080; border: 1px solid rgba(255,80,80,0.3); display: block; }
+  .verify-status.success { background: rgba(0,200,83,0.1); color: var(--green); border: 1px solid var(--border); display: block; }
+  .verify-status.loading { background: var(--surface2); color: var(--muted); display: block; }
 
   /* Sound toggle */
   .sound-toggle {
@@ -432,19 +479,27 @@
     </div>
   </div>
 
-  <div class="test-area">
-    <div class="test-label">🧪 ทดสอบระบบ</div>
-    <div class="test-row">
-      <input class="test-input" id="testAmount" type="number" placeholder="จำนวนเงิน (บาท)" min="1">
-      <button class="btn-test" onclick="sendTest()">ส่งทดสอบ</button>
+  <div class="upload-area">
+    <div class="test-label">📤 ตรวจสอบสลิป</div>
+    <div class="upload-zone" id="uploadZone" onclick="document.getElementById('slipFile').click()">
+      <div class="upload-zone-icon">🧾</div>
+      <div class="upload-zone-text">แตะเพื่อเลือกรูปสลิป หรือลากมาวาง</div>
+      <div class="upload-zone-hint">JPG, PNG (สูงสุด ~5 MB)</div>
     </div>
+    <input type="file" id="slipFile" accept="image/*" style="display:none" onchange="handleFile(this.files[0])">
+    <img id="slipPreview" class="upload-preview" style="display:none">
+    <div class="verify-status" id="verifyStatus"></div>
     <label class="sound-toggle" onclick="toggleSound()">
       <div class="toggle-switch on" id="soundSwitch"></div>
       <span class="sound-label" id="soundLabel">🔊 เสียงแจ้งเตือนเปิดอยู่</span>
     </label>
-    <div class="webhook-info">
-      Webhook URL สำหรับ SCB:
-      <div class="webhook-url" id="webhookUrl">http://localhost:3000/webhook/scb</div>
+  </div>
+
+  <div class="test-area" style="margin-top:12px">
+    <div class="test-label">🧪 ทดสอบระบบ (mock)</div>
+    <div class="test-row">
+      <input class="test-input" id="testAmount" type="number" placeholder="จำนวนเงิน (บาท)" min="1">
+      <button class="btn-test" onclick="sendTest()">ส่งทดสอบ</button>
     </div>
   </div>
 </div>
@@ -577,6 +632,71 @@ function connectSSE() {
     setTimeout(connectSSE, 3000);
   };
 }
+
+function setVerifyStatus(msg, type) {
+  const el = document.getElementById('verifyStatus');
+  el.textContent = msg;
+  el.className = 'verify-status ' + (type || '');
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    setVerifyStatus('ไฟล์ต้องเป็นรูปภาพ', 'error');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    setVerifyStatus('ไฟล์ใหญ่เกิน 5 MB', 'error');
+    return;
+  }
+
+  // Show preview
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    document.getElementById('slipPreview').src = e.target.result;
+    document.getElementById('slipPreview').style.display = 'block';
+
+    // unlock audio
+    getAudioCtx().resume();
+
+    setVerifyStatus('⏳ กำลังตรวจสอบสลิป...', 'loading');
+    try {
+      const r = await fetch('/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: e.target.result }),
+      });
+      const json = await r.json();
+      if (json.success) {
+        if (json.duplicate) {
+          setVerifyStatus('⚠️ สลิปนี้เคยตรวจแล้ว', 'error');
+        } else {
+          setVerifyStatus(`✅ ยืนยันแล้ว ${formatAmount(json.data.amount)} บาท`, 'success');
+        }
+      } else {
+        const msg = json.error?.message || json.error || 'ตรวจสอบไม่สำเร็จ';
+        setVerifyStatus('❌ ' + msg, 'error');
+      }
+    } catch(err) {
+      setVerifyStatus('❌ เชื่อมต่อ server ไม่ได้', 'error');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Drag & drop
+const dropZone = document.getElementById('uploadZone');
+['dragenter', 'dragover'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); e.stopPropagation();
+  dropZone.classList.add('dragging');
+}));
+['dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); e.stopPropagation();
+  dropZone.classList.remove('dragging');
+}));
+dropZone.addEventListener('drop', (e) => {
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
 
 async function sendTest() {
   // unlock audio

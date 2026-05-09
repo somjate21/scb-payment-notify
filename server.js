@@ -96,6 +96,94 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // EasySlip verify endpoint
+  if (req.method === "POST" && req.url === "/verify") {
+    const apiKey = process.env.EASYSLIP_API_KEY;
+    if (!apiKey) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ success: false, error: "EASYSLIP_API_KEY not configured" }));
+      return;
+    }
+
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const input = JSON.parse(body || "{}");
+        let easyslipRes;
+
+        if (input.payload) {
+          // QR payload string -> JSON request
+          easyslipRes = await fetch("https://api.easyslip.com/v2/verify/bank", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ payload: input.payload, checkDuplicate: true }),
+          });
+        } else if (input.imageBase64) {
+          // base64 image -> multipart upload
+          const base64 = input.imageBase64.replace(/^data:image\/\w+;base64,/, "");
+          const buffer = Buffer.from(base64, "base64");
+          const form = new FormData();
+          form.append("image", new Blob([buffer]), "slip.jpg");
+          form.append("checkDuplicate", "true");
+
+          easyslipRes = await fetch("https://api.easyslip.com/v2/verify/bank", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${apiKey}` },
+            body: form,
+          });
+        } else {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: "Provide imageBase64 or payload" }));
+          return;
+        }
+
+        const result = await easyslipRes.json();
+        console.log("[VERIFY] EasySlip response:", JSON.stringify(result));
+
+        if (!result.success) {
+          res.writeHead(easyslipRes.status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+          return;
+        }
+
+        // Map EasySlip response -> our payment shape
+        const slip = result.data?.rawSlip || {};
+        const payment = {
+          transRef: slip.transRef || "N/A",
+          amount: slip.amount?.amount || 0,
+          sendingBank: slip.sender?.bank?.short || slip.sender?.bank?.name || "Unknown",
+          senderName: slip.sender?.account?.name?.th || slip.sender?.account?.name?.en || "",
+          receiver: {
+            bank: slip.receiver?.bank?.short || "",
+            accountName: slip.receiver?.account?.name?.th || slip.receiver?.account?.name?.en || "",
+          },
+          transDate: slip.date || "",
+          isDuplicate: result.data?.isDuplicate || false,
+          receivedAt: new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" }),
+        };
+
+        // Broadcast to SSE only if not duplicate
+        if (!payment.isDuplicate) {
+          const event = `data: ${JSON.stringify(payment)}\n\n`;
+          clients.forEach((client) => client.write(event));
+          console.log(`[VERIFY] Broadcasted to ${clients.length} clients`);
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, data: payment, duplicate: payment.isDuplicate }));
+      } catch (e) {
+        console.error("[VERIFY] Error:", e);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // Test trigger endpoint (simulate SCB webhook)
   if (req.method === "POST" && req.url === "/test") {
     let body = "";
