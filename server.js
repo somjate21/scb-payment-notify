@@ -32,10 +32,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Allow GET on /webhook/scb so SCB URL validation passes
-  if (req.method === "GET" && req.url === "/webhook/scb") {
+  // Allow GET on /webhook/scb and /notify so SCB URL validation passes
+  if (req.method === "GET" && (req.url === "/webhook/scb" || req.url === "/notify")) {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", message: "Webhook endpoint is alive" }));
+    res.end(JSON.stringify({ status: "ok", message: "Endpoint is alive" }));
     return;
   }
 
@@ -59,8 +59,8 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // SCB Webhook endpoint
-  if (req.method === "POST" && req.url === "/webhook/scb") {
+  // SCB Webhook endpoint (accept both /webhook/scb and /notify)
+  if (req.method === "POST" && (req.url === "/webhook/scb" || req.url === "/notify")) {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
