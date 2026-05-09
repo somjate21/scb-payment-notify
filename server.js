@@ -25,6 +25,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // OAuth callback endpoint (for SCB URL validation + future OAuth flow)
+  if (req.method === "GET" && req.url.startsWith("/callback")) {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end("<h1>OAuth Callback OK</h1>");
+    return;
+  }
+
+  // Allow GET on /webhook/scb so SCB URL validation passes
+  if (req.method === "GET" && req.url === "/webhook/scb") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", message: "Webhook endpoint is alive" }));
+    return;
+  }
+
   // SSE endpoint - browser subscribes here
   if (req.method === "GET" && req.url === "/events") {
     res.writeHead(200, {
